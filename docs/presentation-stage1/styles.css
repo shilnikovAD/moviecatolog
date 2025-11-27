@@ -1,0 +1,4 @@
+/* Простые стили для презентации */
+.reveal { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+.reveal h1 { font-size: 2.2em; margin-bottom: 0.2em; }
+.reveal pre { background: rgba(255,255,255,0.03); padding: 10px; border-radius: 6px; white-space: pre-wrap; }

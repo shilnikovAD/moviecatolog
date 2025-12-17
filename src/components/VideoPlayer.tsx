@@ -30,6 +30,8 @@ export const VideoPlayer = ({
   const [volume, setVolume] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const TIME_SYNC_TOLERANCE_SECONDS = 1;
+
   // Sync external state with internal state
   useEffect(() => {
     setInternalPlaying(isPlaying);
@@ -52,10 +54,10 @@ export const VideoPlayer = ({
 
   // Handle time sync for video element
   useEffect(() => {
-    if (videoRef.current && !youtubeKey && Math.abs(videoRef.current.currentTime - currentTime) > 1) {
+    if (videoRef.current && !youtubeKey && Math.abs(videoRef.current.currentTime - currentTime) > TIME_SYNC_TOLERANCE_SECONDS) {
       videoRef.current.currentTime = currentTime;
     }
-  }, [currentTime, youtubeKey]);
+  }, [currentTime, youtubeKey, TIME_SYNC_TOLERANCE_SECONDS]);
 
   const handlePlayPause = () => {
     const newState = !internalPlaying;
@@ -94,14 +96,24 @@ export const VideoPlayer = ({
     }
   };
 
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   const toggleFullscreen = () => {
     const container = videoRef.current?.parentElement;
     if (!document.fullscreenElement && container) {
       container.requestFullscreen().catch(console.error);
-      setIsFullscreen(true);
     } else if (document.fullscreenElement) {
-      document.exitFullscreen();
-      setIsFullscreen(false);
+      document.exitFullscreen().catch(console.error);
     }
   };
 
@@ -111,15 +123,21 @@ export const VideoPlayer = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Sanitize YouTube key (only allow alphanumeric, underscore, and hyphen)
+  const sanitizeYoutubeKey = (key: string): string => {
+    return key.replace(/[^a-zA-Z0-9_-]/g, '');
+  };
+
   // YouTube player
   if (youtubeKey) {
+    const sanitizedKey = sanitizeYoutubeKey(youtubeKey);
     return (
       <div className={styles.container}>
         <div className={styles.videoWrapper}>
           <iframe
             ref={iframeRef}
             className={styles.iframe}
-            src={`https://www.youtube.com/embed/${youtubeKey}?autoplay=${internalPlaying ? 1 : 0}&start=${Math.floor(currentTime)}`}
+            src={`https://www.youtube.com/embed/${sanitizedKey}?autoplay=${internalPlaying ? 1 : 0}&start=${Math.floor(currentTime)}`}
             title={title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen

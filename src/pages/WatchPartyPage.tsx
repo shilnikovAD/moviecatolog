@@ -23,7 +23,7 @@ export const WatchPartyPage = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [participants, setParticipants] = useState(1);
   const channelRef = useRef<BroadcastChannel | null>(null);
-  const sessionIdRef = useRef(Math.random().toString(36).substring(7));
+  const sessionIdRef = useRef(crypto.randomUUID());
 
   useEffect(() => {
     if (id) {
@@ -84,8 +84,12 @@ export const WatchPartyPage = () => {
           }
           break;
         case 'join':
-          // Count participants
+          // Count participants (increment for new joiners)
           setParticipants((prev) => prev + 1);
+          break;
+        case 'leave':
+          // Decrement participant count when someone leaves
+          setParticipants((prev) => Math.max(1, prev - 1));
           break;
       }
     };

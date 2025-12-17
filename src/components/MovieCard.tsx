@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import type { Movie } from '../types/movie.ts';
 import { useAppDispatch, useAppSelector } from '../store/hooks.ts';
 import { addToFavorites, removeFromFavorites } from '../features/favorites/favoritesSlice.ts';
@@ -10,6 +11,7 @@ interface MovieCardProps {
 }
 
 export const MovieCard = ({ movie, onClick }: MovieCardProps) => {
+  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const favorites = useAppSelector((state) => state.favorites.favorites);
   const isFavorite = favorites.some((fav) => fav.id === movie.id);
@@ -23,11 +25,16 @@ export const MovieCard = ({ movie, onClick }: MovieCardProps) => {
     }
   };
 
+  const handleWatchClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/watch/${movie.id}`);
+  };
+
   const year = movie.release_date ? new Date(movie.release_date).getFullYear() : 'N/A';
 
   return (
     <div className={styles.card} onClick={onClick}>
-      <div style={{ position: 'relative' }}>
+      <div className={styles.posterContainer}>
         <img
           src={movieApi.getImageUrl(movie.poster_path)}
           alt={movie.title}
@@ -40,6 +47,15 @@ export const MovieCard = ({ movie, onClick }: MovieCardProps) => {
         >
           {isFavorite ? '❤️' : '🤍'}
         </button>
+        <div className={styles.overlay}>
+          <button
+            className={styles.watchButton}
+            onClick={handleWatchClick}
+            aria-label="Watch movie"
+          >
+            ▶️ Watch
+          </button>
+        </div>
       </div>
       <div className={styles.content}>
         <h3 className={styles.title}>{movie.title}</h3>

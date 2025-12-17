@@ -6,6 +6,8 @@ import { HomePage } from './pages/HomePage.tsx';
 import { MovieDetailsPage } from './pages/MovieDetailsPage.tsx';
 import { FavoritesPage } from './pages/FavoritesPage.tsx';
 import { AboutPage } from './pages/AboutPage.tsx';
+import { WatchMoviePage } from './pages/WatchMoviePage.tsx';
+import { WatchPartyPage } from './pages/WatchPartyPage.tsx';
 import './App.css';
 
 function App() {
@@ -20,6 +22,8 @@ function App() {
               <Route path="/movie/:id" element={<MovieDetailsPage />} />
               <Route path="/favorites" element={<FavoritesPage />} />
               <Route path="/about" element={<AboutPage />} />
+              <Route path="/watch/:id" element={<WatchMoviePage />} />
+              <Route path="/watch-party/:id" element={<WatchPartyPage />} />
             </Routes>
           </main>
         </div>

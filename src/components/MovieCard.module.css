@@ -15,11 +15,21 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
+.posterContainer {
+  position: relative;
+  overflow: hidden;
+}
+
 .poster {
   width: 100%;
   aspect-ratio: 2 / 3;
   object-fit: cover;
   background: #f0f0f0;
+  transition: transform 0.3s;
+}
+
+.card:hover .poster {
+  transform: scale(1.05);
 }
 
 .content {
@@ -85,4 +95,41 @@
 .favoriteBtn.active {
   background: #ff4757;
   color: white;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.8) 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.card:hover .overlay {
+  opacity: 1;
+}
+
+.watchButton {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 25px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.watchButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
 }

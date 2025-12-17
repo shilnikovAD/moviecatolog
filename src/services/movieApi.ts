@@ -31,6 +31,15 @@ export const movieApi = {
     return response.json();
   },
 
+  // Get movie videos (trailers, teasers, etc.)
+  getMovieVideos: async (movieId: number) => {
+    const response = await fetch(
+      `${BASE_URL}/movie/${movieId}/videos?api_key=${API_KEY}`
+    );
+    if (!response.ok) throw new Error('Failed to fetch movie videos');
+    return response.json();
+  },
+
   // Get image URL
   getImageUrl: (path: string | null, size: string = 'w500'): string => {
     if (!path) return '/placeholder.jpg';

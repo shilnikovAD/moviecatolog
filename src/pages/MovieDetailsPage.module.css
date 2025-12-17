@@ -59,6 +59,12 @@
   gap: 1rem;
 }
 
+.actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .title {
   font-size: 2.5rem;
   margin: 0 0 0.5rem 0;
@@ -69,6 +75,25 @@
   font-style: italic;
   color: #666;
   margin: 0;
+}
+
+.watchBtn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.watchBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
 }
 
 .favoriteBtn {

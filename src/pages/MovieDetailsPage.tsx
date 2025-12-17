@@ -55,12 +55,20 @@ export const MovieDetailsPage = () => {
               <h1 className={styles.title}>{movieDetails.title}</h1>
               {movieDetails.tagline && <p className={styles.tagline}>"{movieDetails.tagline}"</p>}
             </div>
-            <button
-              className={`${styles.favoriteBtn} ${isFavorite ? styles.active : ''}`}
-              onClick={handleFavoriteClick}
-            >
-              {isFavorite ? '❤️ Remove' : '🤍 Add to Favorites'}
-            </button>
+            <div className={styles.actions}>
+              <button
+                className={styles.watchBtn}
+                onClick={() => navigate(`/watch/${movieDetails.id}`)}
+              >
+                ▶️ Watch Now
+              </button>
+              <button
+                className={`${styles.favoriteBtn} ${isFavorite ? styles.active : ''}`}
+                onClick={handleFavoriteClick}
+              >
+                {isFavorite ? '❤️ Remove' : '🤍 Add to Favorites'}
+              </button>
+            </div>
           </div>
 
           <div className={styles.meta}>

@@ -20,10 +20,10 @@ export const WatchMoviePage = () => {
       
       // Fetch video trailers
       movieApi.getMovieVideos(Number(id))
-        .then((data) => {
+        .then((data: { results?: Array<{ type: string; site: string; key: string }> }) => {
           // Find the first YouTube trailer
           const trailer = data.results?.find(
-            (video: any) => video.type === 'Trailer' && video.site === 'YouTube'
+            (video) => video.type === 'Trailer' && video.site === 'YouTube'
           );
           if (trailer) {
             setYoutubeKey(trailer.key);

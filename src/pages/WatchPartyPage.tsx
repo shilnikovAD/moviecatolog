@@ -31,9 +31,9 @@ export const WatchPartyPage = () => {
       
       // Fetch video trailers
       movieApi.getMovieVideos(Number(id))
-        .then((data) => {
+        .then((data: { results?: Array<{ type: string; site: string; key: string }> }) => {
           const trailer = data.results?.find(
-            (video: any) => video.type === 'Trailer' && video.site === 'YouTube'
+            (video) => video.type === 'Trailer' && video.site === 'YouTube'
           );
           if (trailer) {
             setYoutubeKey(trailer.key);
@@ -51,38 +51,39 @@ export const WatchPartyPage = () => {
   useEffect(() => {
     const channelName = `watch-party-${id}`;
     const channel = new BroadcastChannel(channelName);
+    const sessionId = sessionIdRef.current;
     channelRef.current = channel;
 
     // Announce presence
-    channel.postMessage({ type: 'join', senderId: sessionIdRef.current });
+    channel.postMessage({ type: 'join', senderId: sessionId });
 
-    channel.onmessage = (event: MessageEvent<SyncMessage>) => {
-      const message = event.data;
+    channel.onmessage = (event: MessageEvent) => {
+      const message = event.data as SyncMessage | { type: 'join' | 'leave'; senderId: string };
       
       // Ignore messages from self
-      if (message.senderId === sessionIdRef.current) {
+      if (message.senderId === sessionId) {
         return;
       }
 
       switch (message.type) {
         case 'play':
           setIsPlaying(true);
-          if (message.time !== undefined) {
+          if ('time' in message && message.time !== undefined) {
             setCurrentTime(message.time);
           }
           break;
         case 'pause':
           setIsPlaying(false);
-          if (message.time !== undefined) {
+          if ('time' in message && message.time !== undefined) {
             setCurrentTime(message.time);
           }
           break;
         case 'seek':
-          if (message.time !== undefined) {
+          if ('time' in message && message.time !== undefined) {
             setCurrentTime(message.time);
           }
           break;
-        case 'join' as any:
+        case 'join':
           // Count participants
           setParticipants((prev) => prev + 1);
           break;
@@ -90,7 +91,7 @@ export const WatchPartyPage = () => {
     };
 
     return () => {
-      channel.postMessage({ type: 'leave', senderId: sessionIdRef.current });
+      channel.postMessage({ type: 'leave', senderId: sessionId });
       channel.close();
     };
   }, [id]);

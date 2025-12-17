@@ -1,223 +1,387 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useAppDispatch, useAppSelector } from '../store/hooks.ts';
-import { fetchMovieDetails } from '../features/movies/moviesSlice.ts';
-import { VideoPlayer } from '../components/VideoPlayer.tsx';
-import { movieApi } from '../services/movieApi.ts';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchMovieDetails } from '../features/movies/moviesSlice';
+import {
+  createRoom,
+  joinRoom,
+  leaveRoom,
+  addParticipant,
+  removeParticipant,
+  setPlaying,
+  setCurrentTime,
+  addMessage,
+} from '../features/watchParty/watchPartySlice';
+import { watchPartyService, WatchPartyService } from '../services/watchPartyService';
+import { movieApi } from '../services/movieApi';
+import { VideoPlayer } from '../components/VideoPlayer';
 import styles from './WatchPartyPage.module.css';
-
-interface SyncMessage {
-  type: 'play' | 'pause' | 'seek';
-  time?: number;
-  senderId: string;
-}
 
 export const WatchPartyPage = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { movieDetails, loading, error } = useAppSelector((state) => state.movies);
-  const [youtubeKey, setYoutubeKey] = useState<string | undefined>();
-  const [loadingVideo, setLoadingVideo] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [participants, setParticipants] = useState(1);
-  const channelRef = useRef<BroadcastChannel | null>(null);
-  const sessionIdRef = useRef(crypto.randomUUID());
+
+  const { movieDetails, loading } = useAppSelector((state) => state.movies);
+  const watchParty = useAppSelector((state) => state.watchParty);
+
+  const [userName, setUserName] = useState('');
+  const [roomIdInput, setRoomIdInput] = useState('');
+  const [isSetup, setIsSetup] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
+  const [userId] = useState(() => `user_${Math.random().toString(36).substring(2, 9)}`);
+  const [youtubeKey, setYoutubeKey] = useState<string>('');
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     if (id) {
       dispatch(fetchMovieDetails(Number(id)));
-      
-      // Fetch video trailers
-      movieApi.getMovieVideos(Number(id))
-        .then((data: { results?: Array<{ type: string; site: string; key: string }> }) => {
-          const trailer = data.results?.find(
-            (video) => video.type === 'Trailer' && video.site === 'YouTube'
-          );
-          if (trailer) {
-            setYoutubeKey(trailer.key);
-          }
-          setLoadingVideo(false);
-        })
-        .catch((err) => {
-          console.error('Failed to fetch videos:', err);
-          setLoadingVideo(false);
-        });
+
+      // Загружаем трейлер
+      movieApi.getMovieVideos(Number(id)).then((data) => {
+        const trailer = data.results.find(
+          (video) => video.type === 'Trailer' && video.site === 'YouTube'
+        );
+        if (trailer) {
+          setYoutubeKey(trailer.key);
+        }
+      }).catch(console.error);
     }
-  }, [dispatch, id]);
 
-  // Setup BroadcastChannel for watch party synchronization
+    const roomFromUrl = searchParams.get('room');
+    if (roomFromUrl) {
+      setRoomIdInput(roomFromUrl);
+    }
+  }, [id, dispatch, searchParams]);
+
   useEffect(() => {
-    const channelName = `watch-party-${id}`;
-    const channel = new BroadcastChannel(channelName);
-    const sessionId = sessionIdRef.current;
-    channelRef.current = channel;
+    if (!watchParty.connected) return;
 
-    // Announce presence
-    channel.postMessage({ type: 'join', senderId: sessionId });
+    // Слушаем события от сервиса
+    const handleJoin = (data: any) => {
+      dispatch(addParticipant({
+        id: data.userId,
+        name: data.userName || 'Anonymous',
+        isHost: false,
+      }));
 
-    channel.onmessage = (event: MessageEvent) => {
-      const message = event.data as SyncMessage | { type: 'join' | 'leave'; senderId: string };
-      
-      // Ignore messages from self
-      if (message.senderId === sessionId) {
-        return;
-      }
+      dispatch(addMessage({
+        id: `${Date.now()}_${Math.random()}`,
+        userId: 'system',
+        userName: 'System',
+        message: `${data.userName || 'Someone'} joined the party`,
+        timestamp: Date.now(),
+      }));
+    };
 
-      switch (message.type) {
-        case 'play':
-          setIsPlaying(true);
-          if ('time' in message && message.time !== undefined) {
-            setCurrentTime(message.time);
-          }
-          break;
-        case 'pause':
-          setIsPlaying(false);
-          if ('time' in message && message.time !== undefined) {
-            setCurrentTime(message.time);
-          }
-          break;
-        case 'seek':
-          if ('time' in message && message.time !== undefined) {
-            setCurrentTime(message.time);
-          }
-          break;
-        case 'join':
-          // Count participants (increment for new joiners)
-          setParticipants((prev) => prev + 1);
-          break;
-        case 'leave':
-          // Decrement participant count when someone leaves
-          setParticipants((prev) => Math.max(1, prev - 1));
-          break;
+    const handleLeave = (data: any) => {
+      dispatch(removeParticipant(data.userId));
+      dispatch(addMessage({
+        id: `${Date.now()}_${Math.random()}`,
+        userId: 'system',
+        userName: 'System',
+        message: `${data.userName || 'Someone'} left the party`,
+        timestamp: Date.now(),
+      }));
+    };
+
+    const handlePlay = (data: any) => {
+      dispatch(setPlaying(true));
+      if (data.data?.currentTime !== undefined) {
+        dispatch(setCurrentTime(data.data.currentTime));
       }
     };
+
+    const handlePause = (data: any) => {
+      dispatch(setPlaying(false));
+      if (data.data?.currentTime !== undefined) {
+        dispatch(setCurrentTime(data.data.currentTime));
+      }
+    };
+
+    const handleSeek = (data: any) => {
+      if (data.data?.currentTime !== undefined) {
+        dispatch(setCurrentTime(data.data.currentTime));
+      }
+    };
+
+    const handleChat = (data: any) => {
+      dispatch(addMessage({
+        id: `${Date.now()}_${Math.random()}`,
+        userId: data.userId,
+        userName: data.userName || 'Anonymous',
+        message: data.data.message,
+        timestamp: Date.now(),
+      }));
+    };
+
+    watchPartyService.on('join', handleJoin);
+    watchPartyService.on('leave', handleLeave);
+    watchPartyService.on('play', handlePlay);
+    watchPartyService.on('pause', handlePause);
+    watchPartyService.on('seek', handleSeek);
+    watchPartyService.on('chat', handleChat);
 
     return () => {
-      channel.postMessage({ type: 'leave', senderId: sessionId });
-      channel.close();
+      watchPartyService.off('join', handleJoin);
+      watchPartyService.off('leave', handleLeave);
+      watchPartyService.off('play', handlePlay);
+      watchPartyService.off('pause', handlePause);
+      watchPartyService.off('seek', handleSeek);
+      watchPartyService.off('chat', handleChat);
     };
-  }, [id]);
+  }, [watchParty.connected, dispatch]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [watchParty.messages]);
+
+  // Автоматическое обновление времени при воспроизведении (для демо-режима)
+  useEffect(() => {
+    if (watchParty.isPlaying && watchParty.roomId) {
+      // Обновляем время каждые 100ms
+      timeUpdateIntervalRef.current = setInterval(() => {
+        const newTime = watchParty.currentTime + 0.1;
+        dispatch(setCurrentTime(newTime));
+
+        // Не отправляем каждое обновление времени, чтобы не засорять канал
+        // YouTube API или обычное видео сами обновляют время
+      }, 100);
+    } else {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+      }
+    }
+
+    return () => {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+      }
+    };
+  }, [watchParty.isPlaying, watchParty.currentTime, watchParty.roomId, dispatch]);
+
+  const handleCreateRoom = async () => {
+    if (!userName.trim() || !id) return;
+
+    const roomId = WatchPartyService.generateRoomId();
+    await watchPartyService.connect(roomId, userId, userName);
+
+    dispatch(createRoom({
+      roomId,
+      movieId: Number(id),
+      userId,
+      userName,
+    }));
+
+    setIsSetup(true);
+  };
+
+  const handleJoinRoom = async () => {
+    if (!userName.trim() || !roomIdInput.trim() || !id) return;
+
+    await watchPartyService.connect(roomIdInput, userId, userName);
+
+    dispatch(joinRoom({
+      roomId: roomIdInput,
+      movieId: Number(id),
+      userId,
+      userName,
+    }));
+
+    setIsSetup(true);
+  };
+
+  const handleLeave = () => {
+    watchPartyService.disconnect();
+    dispatch(leaveRoom());
+    navigate(`/movie/${id}`);
+  };
 
   const handlePlayPause = () => {
-    const newState = !isPlaying;
-    setIsPlaying(newState);
-    
-    if (channelRef.current) {
-      channelRef.current.postMessage({
-        type: newState ? 'play' : 'pause',
-        time: currentTime,
-        senderId: sessionIdRef.current,
-      });
+    if (!watchParty.roomId) return;
+
+    if (watchParty.isPlaying) {
+      watchPartyService.pause(watchParty.roomId, userId, watchParty.currentTime);
+      dispatch(setPlaying(false));
+    } else {
+      watchPartyService.play(watchParty.roomId, userId, watchParty.currentTime);
+      dispatch(setPlaying(true));
     }
   };
 
-  const handleSeek = (time: number) => {
-    setCurrentTime(time);
-    
-    if (channelRef.current) {
-      channelRef.current.postMessage({
-        type: 'seek',
-        time,
-        senderId: sessionIdRef.current,
-      });
+  const handleSendMessage = () => {
+    if (!chatMessage.trim() || !watchParty.roomId) return;
+
+    watchPartyService.sendChat(watchParty.roomId, userId, userName, chatMessage);
+
+    dispatch(addMessage({
+      id: `${Date.now()}_${Math.random()}`,
+      userId,
+      userName,
+      message: chatMessage,
+      timestamp: Date.now(),
+    }));
+
+    setChatMessage('');
+  };
+
+  const handleCopyRoomId = () => {
+    if (watchParty.roomId) {
+      const url = `${window.location.origin}/watch-party/${id}?room=${watchParty.roomId}`;
+      navigator.clipboard.writeText(url);
+      alert('Room link copied to clipboard!');
     }
   };
 
-  const handleTimeUpdate = (time: number) => {
-    setCurrentTime(time);
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (loading || loadingVideo) {
-    return <div className={styles.loading}>Loading watch party...</div>;
-  }
-
-  if (error) {
-    return <div className={styles.error}>{error}</div>;
+  if (loading) {
+    return <div className={styles.page}>Loading movie details...</div>;
   }
 
   if (!movieDetails) {
-    return <div className={styles.error}>Movie not found</div>;
+    return <div className={styles.page}>Movie not found</div>;
   }
 
-  const year = movieDetails.release_date ? new Date(movieDetails.release_date).getFullYear() : 'N/A';
+  if (!isSetup) {
+    return (
+      <div className={styles.page}>
+        <button className={styles.backBtn} onClick={() => navigate(`/movie/${id}`)}>
+          ← Back to Movie
+        </button>
+
+        <div className={styles.setupSection}>
+          <h1 className={styles.setupTitle}>Watch Party: {movieDetails.title}</h1>
+
+          <div className={styles.setupOptions}>
+            <div className={styles.inputGroup}>
+              <label>Your Name</label>
+              <input
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                placeholder="Enter your name"
+                onKeyPress={(e) => e.key === 'Enter' && handleCreateRoom()}
+              />
+            </div>
+
+            <button className={styles.setupBtn} onClick={handleCreateRoom}>
+              Create New Watch Party
+            </button>
+
+            <div className={styles.divider}>OR</div>
+
+            <div className={styles.inputGroup}>
+              <label>Room ID</label>
+              <input
+                type="text"
+                value={roomIdInput}
+                onChange={(e) => setRoomIdInput(e.target.value)}
+                placeholder="Enter room ID to join"
+                onKeyPress={(e) => e.key === 'Enter' && handleJoinRoom()}
+              />
+            </div>
+
+            <button className={styles.setupBtn} onClick={handleJoinRoom}>
+              Join Watch Party
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
+      <button className={styles.backBtn} onClick={handleLeave}>
+        ← Leave Watch Party
+      </button>
+
+      <div className={styles.header}>
+        <h1 className={styles.title}>{movieDetails.title}</h1>
+      </div>
+
+      {watchParty.isHost && (
+        <div className={styles.roomInfo}>
+          <span>Room ID:</span>
+          <span className={styles.roomId}>{watchParty.roomId}</span>
+          <button className={styles.copyBtn} onClick={handleCopyRoomId}>
+            Copy Link
+          </button>
+        </div>
+      )}
+
       <div className={styles.container}>
-        <div className={styles.playerSection}>
-          <div className={styles.header}>
-            <button className={styles.backBtn} onClick={() => navigate(-1)}>
-              ← Back
-            </button>
-            
-            <div className={styles.partyInfo}>
-              <span className={styles.partyBadge}>🎉 Watch Party</span>
-              <span className={styles.participants}>
-                {participants} {participants === 1 ? 'viewer' : 'viewers'}
-              </span>
-            </div>
-          </div>
-          
+        <div className={styles.videoSection}>
           <VideoPlayer
             youtubeKey={youtubeKey}
-            title={movieDetails.title}
-            isPlaying={isPlaying}
-            currentTime={currentTime}
+            isPlaying={watchParty.isPlaying}
+            currentTime={watchParty.currentTime}
             onPlayPause={handlePlayPause}
-            onTimeUpdate={handleTimeUpdate}
-            onSeek={handleSeek}
+            onTimeUpdate={(time) => {
+              if (watchParty.roomId) {
+                dispatch(setCurrentTime(time));
+              }
+            }}
+            onSeek={(time) => {
+              if (watchParty.roomId) {
+                watchPartyService.seek(watchParty.roomId, userId, time);
+                dispatch(setCurrentTime(time));
+              }
+            }}
+            title={movieDetails?.title}
           />
-
-          <div className={styles.instructions}>
-            <h3>📖 Watch Party Instructions</h3>
-            <ul>
-              <li>Open this page in multiple browser tabs to test synchronization</li>
-              <li>Play/pause controls are synchronized across all tabs</li>
-              <li>Seeking is synchronized across all tabs</li>
-              <li>Works on the same computer (BroadcastChannel API)</li>
-            </ul>
-          </div>
         </div>
 
         <div className={styles.sidebar}>
-          <div className={styles.movieInfo}>
-            <img
-              src={movieApi.getImageUrl(movieDetails.poster_path, 'w300')}
-              alt={movieDetails.title}
-              className={styles.poster}
-            />
-            
-            <h1 className={styles.title}>{movieDetails.title}</h1>
-            
-            {movieDetails.tagline && (
-              <p className={styles.tagline}>"{movieDetails.tagline}"</p>
-            )}
-
-            <div className={styles.meta}>
-              <div className={styles.metaItem}>
-                <span className={styles.rating}>⭐ {movieDetails.vote_average.toFixed(1)}</span>
-              </div>
-              <div className={styles.metaItem}>📅 {year}</div>
-              <div className={styles.metaItem}>
-                ⏱️ {Math.floor(movieDetails.runtime / 60)}h {movieDetails.runtime % 60}m
-              </div>
+          <div className={styles.participants}>
+            <h2 className={styles.sectionTitle}>
+              Participants ({watchParty.participants.length})
+            </h2>
+            <div className={styles.participantsList}>
+              {watchParty.participants.map((participant) => (
+                <div key={participant.id} className={styles.participant}>
+                  <span>👤 {participant.name}</span>
+                  {participant.isHost && (
+                    <span className={styles.hostBadge}>HOST</span>
+                  )}
+                </div>
+              ))}
             </div>
+          </div>
 
-            {movieDetails.genres.length > 0 && (
-              <div className={styles.genres}>
-                {movieDetails.genres.map((genre) => (
-                  <span key={genre.id} className={styles.genre}>
-                    {genre.name}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <div className={styles.overview}>
-              <h3>Overview</h3>
-              <p>{movieDetails.overview || 'No overview available.'}</p>
+          <div className={styles.chat}>
+            <h2 className={styles.sectionTitle}>Chat</h2>
+            <div className={styles.messages}>
+              {watchParty.messages.map((msg) => (
+                <div key={msg.id} className={styles.message}>
+                  <div className={styles.messageUser}>
+                    {msg.userId === 'system' ? '🤖' : '👤'} {msg.userName}
+                  </div>
+                  <p className={styles.messageText}>{msg.message}</p>
+                  <div className={styles.messageTime}>
+                    {new Date(msg.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+            <div className={styles.chatInput}>
+              <input
+                type="text"
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Type a message..."
+              />
+              <button onClick={handleSendMessage}>Send</button>
             </div>
           </div>
         </div>
@@ -225,3 +389,4 @@ export const WatchPartyPage = () => {
     </div>
   );
 };
+

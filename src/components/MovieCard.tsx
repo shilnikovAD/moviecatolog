@@ -40,6 +40,11 @@ export const MovieCard = ({ movie, onClick }: MovieCardProps) => {
           alt={movie.title}
           className={styles.poster}
         />
+        <div className={styles.overlay}>
+          <button className={styles.watchBtn} onClick={handleWatchClick}>
+            ▶️ Watch
+          </button>
+        </div>
         <button
           className={`${styles.favoriteBtn} ${isFavorite ? styles.active : ''}`}
           onClick={handleFavoriteClick}
@@ -47,15 +52,6 @@ export const MovieCard = ({ movie, onClick }: MovieCardProps) => {
         >
           {isFavorite ? '❤️' : '🤍'}
         </button>
-        <div className={styles.overlay}>
-          <button
-            className={styles.watchButton}
-            onClick={handleWatchClick}
-            aria-label="Watch movie"
-          >
-            ▶️ Watch
-          </button>
-        </div>
       </div>
       <div className={styles.content}>
         <h3 className={styles.title}>{movie.title}</h3>

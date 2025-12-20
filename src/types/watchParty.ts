@@ -28,6 +28,11 @@ export interface WatchPartyMessage {
   roomId: string;
   userId: string;
   userName?: string;
-  data?: any;
+  data?: {
+    currentTime?: number;
+    isPlaying?: boolean;
+    message?: string;
+    participants?: Participant[];
+  };
 }
 

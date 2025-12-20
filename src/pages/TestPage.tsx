@@ -78,7 +78,7 @@ export const TestPage = () => {
       const testChannel = new BroadcastChannel('test_channel');
       testChannel.close();
       addTestResult('BroadcastChannel API available', true);
-    } catch (e) {
+    } catch {
       addTestResult('BroadcastChannel API NOT available', false);
     }
 
@@ -104,8 +104,9 @@ export const TestPage = () => {
         const parsed = JSON.parse(favData);
         addTestResult(`Favorites count: ${parsed.length}`, true);
       }
-    } catch (e: any) {
-      addTestResult(`localStorage error: ${e.message}`, false);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      addTestResult(`localStorage error: ${errorMessage}`, false);
     }
   };
 

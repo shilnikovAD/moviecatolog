@@ -13,9 +13,41 @@ interface VideoPlayerProps {
 }
 
 // Declare YouTube API types
+interface YouTubePlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  getCurrentTime: () => number;
+  getPlayerState: () => number;
+  destroy: () => void;
+}
+
+interface YouTubePlayerConstructor {
+  new (elementId: string, options: YouTubePlayerOptions): YouTubePlayer;
+}
+
+interface YouTubePlayerOptions {
+  height: string;
+  width: string;
+  videoId: string;
+  playerVars: {
+    autoplay: number;
+    mute: number;
+    controls: number;
+    modestbranding: number;
+    rel: number;
+  };
+  events: {
+    onReady: (event: { target: YouTubePlayer }) => void;
+    onStateChange: (event: { data: number }) => void;
+  };
+}
+
 declare global {
   interface Window {
-    YT: any;
+    YT: {
+      Player: YouTubePlayerConstructor;
+    };
     onYouTubeIframeAPIReady: () => void;
   }
 }
@@ -31,14 +63,14 @@ export const VideoPlayer = ({
   title = 'Movie'
 }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const youtubePlayerRef = useRef<any>(null);
+  const youtubePlayerRef = useRef<YouTubePlayer & { timeInterval?: NodeJS.Timeout } | null>(null);
   const iframeRef = useRef<HTMLDivElement>(null);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [youtubeReady, setYoutubeReady] = useState(false);
-  const syncTimeoutRef = useRef<NodeJS.Timeout>();
+  const syncTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Загрузка YouTube API
   useEffect(() => {
@@ -73,19 +105,18 @@ export const VideoPlayer = ({
       width: '100%',
       videoId: youtubeKey,
       playerVars: {
-        autoplay: isPlaying ? 1 : 0,
+        autoplay: 1, // Включаем autoplay с mute
+        mute: 1, // Mute для обхода блокировки autoplay
         controls: 1,
         modestbranding: 1,
         rel: 0,
       },
       events: {
-        onReady: (event: any) => {
+        onReady: () => {
           console.log('🎬 [VideoPlayer] YouTube player ready');
-          if (isPlaying) {
-            event.target.playVideo();
-          }
+          // Убираем play из onReady, пусть отдельный useEffect обрабатывает
         },
-        onStateChange: (event: any) => {
+        onStateChange: (event: { data: number }) => {
           // YouTube player states: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (cued)
           if (event.data === 1 && onTimeUpdate) {
             // Начинаем обновлять время при воспроизведении
@@ -95,11 +126,13 @@ export const VideoPlayer = ({
                 onTimeUpdate(time);
               }
             }, 500);
-            (youtubePlayerRef.current as any).timeInterval = interval;
+            if (youtubePlayerRef.current) {
+              youtubePlayerRef.current.timeInterval = interval;
+            }
           } else {
             // Останавливаем обновление времени
-            if ((youtubePlayerRef.current as any).timeInterval) {
-              clearInterval((youtubePlayerRef.current as any).timeInterval);
+            if (youtubePlayerRef.current?.timeInterval) {
+              clearInterval(youtubePlayerRef.current.timeInterval);
             }
           }
         },
@@ -112,7 +145,7 @@ export const VideoPlayer = ({
         youtubePlayerRef.current = null;
       }
     };
-  }, [youtubeKey, youtubeReady]);
+  }, [youtubeKey, youtubeReady, onTimeUpdate]);
 
   // Синхронизация YouTube плеера
   useEffect(() => {
@@ -140,12 +173,15 @@ export const VideoPlayer = ({
 
     // Задержка для предотвращения слишком частых обновлений
     syncTimeoutRef.current = setTimeout(() => {
-      const currentYoutubeTime = youtubePlayerRef.current.getCurrentTime();
+      const player = youtubePlayerRef.current;
+      if (!player) return;
+
+      const currentYoutubeTime = player.getCurrentTime();
       const diff = Math.abs(currentYoutubeTime - currentTime);
 
       if (diff > 2) { // Синхронизируем если разница больше 2 секунд
         console.log(`⏩ [VideoPlayer] YouTube seek: ${currentTime}s (diff: ${diff.toFixed(2)}s)`);
-        youtubePlayerRef.current.seekTo(currentTime, true);
+        player.seekTo(currentTime, true);
       }
     }, 100);
   }, [currentTime]);
@@ -353,4 +389,3 @@ export const VideoPlayer = ({
     </div>
   );
 };
-

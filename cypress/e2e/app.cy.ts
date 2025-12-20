@@ -1,6 +1,11 @@
 describe('Movie Catalog E2E Tests', () => {
   beforeEach(() => {
+    // Перехватываем популярные фильмы и поиск
+    cy.intercept('GET', '**/movie/popular**', { fixture: 'popular.json' }).as('getPopular');
+    cy.intercept('GET', '**/search/movie**', { fixture: 'search_inception.json' });
+
     cy.visit('/');
+    cy.wait('@getPopular');
   });
 
   it('should load the home page', () => {

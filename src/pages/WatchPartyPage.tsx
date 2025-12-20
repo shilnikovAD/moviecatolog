@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchMovieDetails } from '../features/movies/moviesSlice';
@@ -11,6 +11,7 @@ import {
   setPlaying,
   setCurrentTime,
   addMessage,
+  loadFromStorageAction,
 } from '../features/watchParty/watchPartySlice';
 import { watchPartyService, WatchPartyService } from '../services/watchPartyService';
 import { movieApi } from '../services/movieApi';
@@ -34,7 +35,7 @@ export const WatchPartyPage = () => {
   const [youtubeKey, setYoutubeKey] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const timeUpdateIntervalRef = useRef<NodeJS.Timeout>();
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     if (id) {
@@ -61,7 +62,7 @@ export const WatchPartyPage = () => {
     if (!watchParty.connected) return;
 
     // Слушаем события от сервиса
-    const handleJoin = (data: any) => {
+    const handleJoin = (data: { userId: string; userName?: string; data?: { currentTime?: number; isPlaying?: boolean; message?: string } }) => {
       dispatch(addParticipant({
         id: data.userId,
         name: data.userName || 'Anonymous',
@@ -77,7 +78,7 @@ export const WatchPartyPage = () => {
       }));
     };
 
-    const handleLeave = (data: any) => {
+    const handleLeave = (data: { userId: string; userName?: string; data?: { currentTime?: number; isPlaying?: boolean; message?: string } }) => {
       dispatch(removeParticipant(data.userId));
       dispatch(addMessage({
         id: `${Date.now()}_${Math.random()}`,
@@ -88,27 +89,29 @@ export const WatchPartyPage = () => {
       }));
     };
 
-    const handlePlay = (data: any) => {
+    const handlePlay = (data: { userId: string; data?: { currentTime?: number; isPlaying?: boolean; message?: string } }) => {
       dispatch(setPlaying(true));
       if (data.data?.currentTime !== undefined) {
         dispatch(setCurrentTime(data.data.currentTime));
       }
     };
 
-    const handlePause = (data: any) => {
+    const handlePause = (data: { userId: string; data?: { currentTime?: number; isPlaying?: boolean; message?: string } }) => {
       dispatch(setPlaying(false));
       if (data.data?.currentTime !== undefined) {
         dispatch(setCurrentTime(data.data.currentTime));
       }
     };
 
-    const handleSeek = (data: any) => {
+    const handleSeek = (data: { userId: string; data?: { currentTime?: number; isPlaying?: boolean; message?: string } }) => {
       if (data.data?.currentTime !== undefined) {
         dispatch(setCurrentTime(data.data.currentTime));
       }
     };
 
-    const handleChat = (data: any) => {
+    const handleChat = (data: { userId: string; userName?: string; data?: { currentTime?: number; isPlaying?: boolean; message?: string } }) => {
+      if (!data.data?.message) return;
+
       dispatch(addMessage({
         id: `${Date.now()}_${Math.random()}`,
         userId: data.userId,
@@ -134,6 +137,18 @@ export const WatchPartyPage = () => {
       watchPartyService.off('chat', handleChat);
     };
   }, [watchParty.connected, dispatch]);
+
+  // Слушаем изменения в localStorage от других вкладок
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (watchParty.roomId && (e.key === `participants_${watchParty.roomId}` || e.key === `messages_${watchParty.roomId}`)) {
+        dispatch(loadFromStorageAction());
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [watchParty.roomId, dispatch]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -162,6 +177,17 @@ export const WatchPartyPage = () => {
       }
     };
   }, [watchParty.isPlaying, watchParty.currentTime, watchParty.roomId, dispatch]);
+
+  // Периодическая синхронизация времени (каждые 5 секунд)
+  useEffect(() => {
+    if (!watchParty.isPlaying || !watchParty.roomId) return;
+
+    const syncInterval = setInterval(() => {
+      watchPartyService.seek(watchParty.roomId!, userId, watchParty.currentTime);
+    }, 5000); // каждые 5 секунд
+
+    return () => clearInterval(syncInterval);
+  }, [watchParty.isPlaying, watchParty.roomId, watchParty.currentTime, userId, watchPartyService]);
 
   const handleCreateRoom = async () => {
     if (!userName.trim() || !id) return;
@@ -230,17 +256,24 @@ export const WatchPartyPage = () => {
 
   const handleCopyRoomId = () => {
     if (watchParty.roomId) {
-      const url = `${window.location.origin}/watch-party/${id}?room=${watchParty.roomId}`;
-      navigator.clipboard.writeText(url);
-      alert('Room link copied to clipboard!');
+      navigator.clipboard.writeText(watchParty.roomId);
+      alert('Room ID copied to clipboard!');
     }
   };
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const onTimeUpdate = useCallback((time: number) => {
+    if (watchParty.roomId) {
+      dispatch(setCurrentTime(time));
+    }
+  }, [watchParty.roomId, dispatch]);
+
+  const onSeek = useCallback((time: number) => {
+    if (watchParty.roomId) {
+      watchPartyService.seek(watchParty.roomId, userId, time);
+      dispatch(setCurrentTime(time));
+    }
+  }, [watchParty.roomId, userId, dispatch]);
+
 
   if (loading) {
     return <div className={styles.page}>Loading movie details...</div>;
@@ -325,17 +358,8 @@ export const WatchPartyPage = () => {
             isPlaying={watchParty.isPlaying}
             currentTime={watchParty.currentTime}
             onPlayPause={handlePlayPause}
-            onTimeUpdate={(time) => {
-              if (watchParty.roomId) {
-                dispatch(setCurrentTime(time));
-              }
-            }}
-            onSeek={(time) => {
-              if (watchParty.roomId) {
-                watchPartyService.seek(watchParty.roomId, userId, time);
-                dispatch(setCurrentTime(time));
-              }
-            }}
+            onTimeUpdate={onTimeUpdate}
+            onSeek={onSeek}
             title={movieDetails?.title}
           />
         </div>
@@ -389,4 +413,3 @@ export const WatchPartyPage = () => {
     </div>
   );
 };
-

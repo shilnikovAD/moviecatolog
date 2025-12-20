@@ -1,7 +1,19 @@
 import type { WatchPartyMessage } from '../types/watchParty';
 
+interface MessageData {
+  roomId?: string;
+  userId: string;
+  userName?: string;
+  data?: {
+    currentTime?: number;
+    isPlaying?: boolean;
+    message?: string;
+  };
+}
+
 class WatchPartyService {
-  private listeners: Map<string, Set<(data: any) => void>> = new Map();
+  private listeners: Map<string, Set<(data: MessageData) => void>> = new Map();
+  private channel: BroadcastChannel | null = null;
 
   connect(roomId: string, userId: string, userName: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -41,7 +53,7 @@ class WatchPartyService {
     };
 
     // Сохраняем канал для отправки сообщений
-    (this as any).channel = channel;
+    this.channel = channel;
 
     // Уведомляем других участников о присоединении
     this.sendMessage({
@@ -53,17 +65,17 @@ class WatchPartyService {
   }
 
   disconnect() {
-    if ((this as any).channel) {
-      (this as any).channel.close();
-      (this as any).channel = null;
+    if (this.channel) {
+      this.channel.close();
+      this.channel = null;
     }
     this.listeners.clear();
   }
 
   sendMessage(message: WatchPartyMessage) {
-    if ((this as any).channel) {
+    if (this.channel) {
       console.log(`📤 [WatchParty] Sending:`, message.type, message);
-      (this as any).channel.postMessage(message);
+      this.channel.postMessage(message);
 
       // Также сохраняем в localStorage для персистентности
       const roomKey = `watchparty_room_${message.roomId}`;
@@ -76,21 +88,21 @@ class WatchPartyService {
     }
   }
 
-  on(event: string, callback: (data: any) => void) {
+  on(event: string, callback: (data: MessageData) => void) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event)!.add(callback);
   }
 
-  off(event: string, callback: (data: any) => void) {
+  off(event: string, callback: (data: MessageData) => void) {
     const listeners = this.listeners.get(event);
     if (listeners) {
       listeners.delete(callback);
     }
   }
 
-  private emit(event: string, data: any) {
+  private emit(event: string, data: MessageData) {
     const listeners = this.listeners.get(event);
     if (listeners) {
       listeners.forEach((callback) => callback(data));

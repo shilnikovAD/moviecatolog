@@ -1,10 +1,11 @@
 {
   "extends": "./tsconfig.app.json",
   "include": [
-    "cypress/**/*.ts"
+    "cypress/**/*.ts",
+    "cypress/**/*.tsx"
   ],
   "compilerOptions": {
-    "types": ["cypress"]
+    "types": ["cypress", "@cypress/react"],
+    "typesRoot": ["./node_modules/@types", "./node_modules"]
   }
 }
-
